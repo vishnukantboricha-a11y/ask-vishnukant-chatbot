@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Ask Vishnukant — Voice Chatbot</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 24px; }
+      #chat { max-width: 720px; margin: auto; }
+      .bubble { padding:10px; border-radius:8px; margin:8px 0; }
+      .user { background:#e0f7fa; align-self:flex-end; }
+      .bot { background:#f1f8e9; }
+      #controls { margin-top:12px; }
+      button { padding:10px 16px; font-size:16px; }
+    </style>
+  </head>
+  <body>
+    <div id="chat">
+      <h2>Ask Vishnukant (Voice)</h2>
+      <div id="messages" style="display:flex;flex-direction:column"></div>
+      <div id="controls">
+        <button id="mic">🎤 Start Listening</button>
+        <input id="textInput" placeholder="Or type here" style="width:60%" />
+        <button id="send">Send</button>
+      </div>
+    </div>
+
+    <script>
+      const micBtn = document.getElementById('mic');
+      const sendBtn = document.getElementById('send');
+      const textInput = document.getElementById('textInput');
+      const messages = document.getElementById('messages');
+
+      let recognizing=false;
+      let recognition;
+
+      if ('webkitSpeechRecognition' in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.lang = 'hi-IN'; 
+        recognition.interimResults = false;
+        recognition.onstart = () => { recognizing=true; micBtn.textContent='🎤 Listening... Click to stop'; }
+        recognition.onend = () => { recognizing=false; micBtn.textContent='🎤 Start Listening'; }
+        recognition.onresult = (e) => {
+          const text = e.results[0][0].transcript;
+          appendMessage(text, 'user');
+          sendToServer(text);
+        }
+      } else {
+        micBtn.disabled = true;
+        micBtn.textContent = 'Mic not supported in this browser';
+      }
+
+      micBtn.onclick = () => {
+        if (!recognition) return;
+        if (recognizing) recognition.stop(); else recognition.start();
+      }
+
+      sendBtn.onclick = () => {
+        const t = textInput.value.trim();
+        if (!t) return;
+        appendMessage(t, 'user');
+        sendToServer(t);
+        textInput.value = '';
+      }
+
+      function appendMessage(text, who) {
+        const el = document.createElement('div');
+        el.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
+        el.textContent = text;
+        messages.appendChild(el);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      async function sendToServer(text) {
+        appendMessage('...thinking...', 'bot');
+        try {
+          const res = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          const data = await res.json();
+          const last = messages.lastChild;
+          if (last && last.textContent === '...thinking...') last.remove();
+          appendMessage(data.reply, 'bot');
+          speakText(data.reply);
+        } catch (err) {
+          console.error(err);
+          appendMessage('Server error. Check console.', 'bot');
+        }
+      }
+
+      function speakText(text) {
+        if (!('speechSynthesis' in window)) return;
+        const u = new SpeechSynthesisUtterance();
+        u.text = text;
+        const voices = window.speechSynthesis.getVoices();
+        let chosen = voices.find(v => /hi|hindi/i.test(v.lang)) || voices.find(v => /en/i.test(v.lang)) || voices[0];
+        if (chosen) u.voice = chosen;
+        u.lang = chosen?.lang || 'hi-IN';
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+    </script>
+  </body>
+</html>
